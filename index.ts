@@ -387,7 +387,6 @@ const syncDiary = async (browser: Browser) => {
 
 (async () => {
   const browser = await puppeteer.launch({
-    headless: false,
     // first request to letterboxd takes a really long time for some reason
     timeout: 240_000,
   });
