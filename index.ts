@@ -131,17 +131,11 @@ const syncWatchlist = async (browser: Browser) => {
       film.imdb = imdbId;
       film.tmdb = tmdbId;
 
-      const response = await fetch(`${IMDB_BASE}/watchlist/${imdbId}`, {
-        // DELETE to remove
-        method: "PUT",
-        headers: {
-          Accept: "application/json, text/plain, */*",
-          "Accept-Encoding": "gzip, deflate, br, zstd",
-          Origin: IMDB_BASE,
-          Referer: `${IMDB_BASE}/title/${imdbId}/`,
-          Cookie: env.IMDB_COOKIES,
-          "User-Agent": userAgent,
-        },
+      const response = await graphqlRequest({
+        operationName: "AddIdToWatchlist",
+        query:
+          "mutation AddIdToWatchlist($id: ID!) {\n  addItemToPredefinedList(\n    input: {classType: WATCH_LIST, item: {itemElementId: $id}}\n  ) {\n    modifiedItem {\n      itemId\n    }\n  }\n}",
+        variables: { id: imdbId },
       });
       if (!response.ok) {
         console.log(`Failed to add ${imdbId}`, response);
@@ -152,11 +146,19 @@ const syncWatchlist = async (browser: Browser) => {
         console.log(`Added ${imdbId}`);
         if (!imdbListId) {
           const data = (await response.json()) as {
-            list_id: string;
-            list_item_id: string;
-            status: number;
+            // list_id: string;
+            // list_item_id: string;
+            // status: number;
+            data: {
+              addItemToPredefinedList: {
+                modifiedItem: {
+                  // client's watchlist ID
+                  itemId: string;
+                };
+              };
+            };
           };
-          imdbListId = data.list_id;
+          imdbListId = data.data.addItemToPredefinedList.modifiedItem.itemId;
         }
       }
     } else {
@@ -358,20 +360,12 @@ const syncDiary = async (browser: Browser) => {
         `Marked ${request.imdbId} as watched (${request.rating ? `${request.rating}/10` : "no rating"})`,
       );
       // TODO: check if it's in the watchlist first
-      const removeResponse = await fetch(
-        `${IMDB_BASE}/watchlist/${request.imdbId}`,
-        {
-          method: "DELETE",
-          headers: {
-            Accept: "application/json, text/plain, */*",
-            "Accept-Encoding": "gzip, deflate, br, zstd",
-            Origin: IMDB_BASE,
-            Referer: `${IMDB_BASE}/title/${request.imdbId}/`,
-            Cookie: env.IMDB_COOKIES,
-            "User-Agent": userAgent,
-          },
-        },
-      );
+      const removeResponse = await graphqlRequest({
+        operationName: "RemoveIdFromWatchlist",
+        query:
+          "mutation RemoveIdFromWatchlist($id: ID!) {\n  removeElementFromPredefinedList(\n    input: {classType: WATCH_LIST, itemElementId: $id}\n  ) {\n    modifiedItem {\n      itemId\n    }\n  }\n}",
+        variables: { id: request.imdbId },
+      });
       if (!removeResponse.ok) {
         console.log("Failed to remove it from watchlist", removeResponse);
         if (removeResponse.status === 403) break;
