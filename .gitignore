@@ -175,5 +175,6 @@ dist
 .DS_Store
 
 # local
-/watchlist.json
-/watched.json
+*.csv
+uris.txt
+/letterboxd-*/*
