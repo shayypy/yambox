@@ -28,6 +28,8 @@ bun export2yam.ts letterboxd-firstusername-2026-01-01-00-00-utc letterboxd-secon
 
 Writes `output.csv` in to the working directory in [Yamtrack's CSV import format](https://github.com/FuzzyGrim/Yamtrack/wiki/Media-Import-Configuration#yamtrack-csv-format). Import this file in Yamtrack settings -> Import data.
 
+Ideally, this script would copy your reviews or tags in the film notes, but there does not seem to be a way to include newlines in a way that Yamtrack will correctly parse.
+
 ### URI Caching
 
 By default, this tool will scrape each Letterboxd URI in your export in order to find which [TMDB](https://www.themoviedb.org) ID it refers to (and which type it is, since some films on Letterboxd are actually miniseries and have the `tv` type on TMDB). This is useful because it eliminates the guesswork otherwise done by Yamtrack to match each entry to a film or show. However, this process can take a long time. You can disable it by defining the `RESOLVE_URIS` environment variable as `false`.

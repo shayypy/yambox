@@ -1,38 +1,28 @@
 import { parse as parseCsv } from "csv-parse/sync";
 import { csvKeys, type CsvKey } from "./csv";
+import { createObjectCsvWriter } from "csv-writer";
 
 const RESOLVE_URIS = Bun.env.RESOLVE_URIS !== "false";
 
 const uriCache: Record<string, { type: string; id: number }> = {};
 const uriFile = Bun.file("uris.txt");
-if (RESOLVE_URIS) {
-  try {
-    const text = await uriFile.text();
-    for (const line of text.split("\n")) {
-      if (!line.trim()) continue;
-      const [uri, id, type] = line.split(" ");
-      uriCache[uri] = { id: Number(id), type };
-    }
-  } catch {
-    console.error("Failed to open uris.txt, probably does not exist");
-  }
-}
 const uriWriter = uriFile.writer();
 
 export const writeCsv = async (items: CombinationEntry[]) => {
-  const lines: string[] = [csvKeys.map((k) => `"${k}"`).join(",")];
-  const addLine = (line: Partial<Record<CsvKey, string>>) => {
-    lines.push(
-      csvKeys
-        .map((key) => {
-          const value = line[key] ?? "";
-          return `"${value.replace(/(")/g, "\\$1")}"`;
-        })
-        .join(","),
-    );
-  };
+  const lines: Partial<Record<CsvKey, string>>[] = [];
+
+  const writer = createObjectCsvWriter({
+    path: "output.csv",
+    header: csvKeys.map(key => ({id: key, title: key})),
+  })
+
   for (const item of items) {
-    addLine({
+    if (RESOLVE_URIS && !item.tmdb) {
+      console.log(`No resolution for ${item.uri} (${item.name}) - skipping to avoid import errors`);
+      continue;
+    }
+
+    lines.push({
       media_id: item.tmdb?.id?.toString(),
       source: "tmdb",
       media_type: item.tmdb?.type ?? "movie",
@@ -48,7 +38,8 @@ export const writeCsv = async (items: CombinationEntry[]) => {
     });
   }
 
-  Bun.write("output.csv", lines.join("\n"));
+  // Bun.write("output.csv", lines.join("\n"));
+  await writer.writeRecords(lines);
 };
 
 const readCsv = async <T>(filename: string): Promise<T[]> => {
@@ -165,6 +156,15 @@ const parseExport = async (directory: string) => {
               id = Number(match[4]);
             }
           }
+          // Fallback, particularly for TV
+          if (!id) {
+            const urlMatch = html.match(/href=(?:"|')https:\/\/www.themoviedb.org\/(movie|tv)\/(\d+)\/?(?:"|')/);
+            if (urlMatch?.[1]) {
+              type = urlMatch[1];
+              id = Number(urlMatch[2])
+            }
+          }
+
           if (type && id) {
             tmdb = { type, id };
             console.log(`[${username}] ${lbUri} = ${type}/${id}`);
@@ -208,7 +208,24 @@ const parseExport = async (directory: string) => {
     );
   }
 
-  const allExports = (await Promise.all(folders.map(parseExport))).flat();
+  if (RESOLVE_URIS) {
+  try {
+    const text = await uriFile.text();
+    for (const line of text.split("\n")) {
+      if (!line.trim()) continue;
+      const [uri, id, type] = line.split(" ");
+      uriCache[uri] = { id: Number(id), type };
+    }
+  } catch {
+    console.error("Failed to open uris.txt, probably does not exist");
+  }
+  }
+
+  uriWriter.start()
+  const allExports = [];
+  for (const folder of folders) {
+    allExports.push(...await parseExport(folder));
+  }
   uriWriter.end();
 
   const entries: CombinationEntry[] = [];
@@ -236,14 +253,14 @@ const parseExport = async (directory: string) => {
       ...entry,
       dateAdded: newestDate,
       rating: highestRating,
-      note: `${entry.uri}\n${items
+      note: `${entry.uri} - ${items
         .flatMap(
           (item) =>
             item.diary?.map((d) =>
-              `${item.username}: ${d.uri}\n${d.review ?? ""}`.trim(),
+              `${item.username}: ${d.uri}`.trim(),
             ) ?? [],
         )
-        .join("\n\n")
+        .join(" - ")
         .trim()}`,
     };
     processedUris.push(entry.uri);
